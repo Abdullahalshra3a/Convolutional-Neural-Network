@@ -23,8 +23,9 @@ from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 from ryu.lib.packet import ipv4
 from ryu.lib import pcaplib
-from shutil import copyfile
-import os
+from shutil import copyfile, move
+from scapy.all import wrpcap, rdpcap
+import os,sys
 from math import log
 import pandas as pd
 from scipy.stats import entropy
@@ -37,12 +38,14 @@ class SimpleSwitch13(app_manager.RyuApp):
     src_threshold = 1
     dst_thrshold = 1
     pktcounter = 0
+    n = 0
     def __init__(self, *args, **kwargs):
         super(SimpleSwitch13, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
         self.window = [0] * self.window_size
         #os.system("sudo cicflowmeter -i lo -c flows.csv")
         self.pcap_writer = pcaplib.Writer(open('mypcap.pcap', 'wb'))
+        #self.pcap_writer = pcaplib.Writer(open('foo.pcap', 'wb'))
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -94,8 +97,10 @@ class SimpleSwitch13(app_manager.RyuApp):
         # Dump the packet data into PCAP file
         #self.pcap_writer.write_pkt(ev.msg.data)
         if pkt.get_protocol(ipv4.ipv4):
-           self.pcap_writer.write_pkt(ev.msg.data)
-
+          self.pcap_writer.write_pkt(ev.msg.data)
+          self.pktcounter +=1
+          print ("lf.counter =", self.pktcounter)
+          
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
@@ -105,13 +110,19 @@ class SimpleSwitch13(app_manager.RyuApp):
         src = eth.src
 
         # Dump the packet data into PCAP file
-        
-        self.pktcounter =self.pktcounter+1
-        print ("lf.counter =", self.pktcounter)
-        #if self.pktcounter == 10:
-         # copyfile('mypcap.pcap', 'mypcap1.pcap')
-         # os.remove("mypcap.pcap")
-         # self.pcap_writer = pcaplib.Writer(open('mypcap.pcap', 'wb'))
+  
+        if self.pktcounter >= 100:
+          
+          # iterate pcaplib.Reader that yields (timestamp, packet_data)
+          # in the PCAP file
+           scapy_cap = rdpcap('mypcap.pcap')
+         # if len(scapy_cap) >= 100:
+           x = 'foo%s.pcap' %self.n
+           self.n +=1
+           wrpcap(x,scapy_cap)
+           os.remove("mypcap.pcap")
+           self.pcap_writer = pcaplib.Writer(open('mypcap.pcap', 'wb'))
+           self.pktcounter = 0
         dpid = format(datapath.id, "d").zfill(16)
         self.mac_to_port.setdefault(dpid, {})
 
